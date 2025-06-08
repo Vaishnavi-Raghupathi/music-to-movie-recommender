@@ -1,0 +1,8 @@
+__pycache__/
+faiss_cache/
+flask_session/
+TMDB_movie_dataset_v11.csv
+preprocessed_movies.csv
+venv/
+.env
+*.pyc

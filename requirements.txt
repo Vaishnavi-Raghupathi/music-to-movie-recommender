@@ -1,0 +1,12 @@
+flask>=2.2
+flask-session
+spotipy>=2.23
+python-dotenv
+pandas
+numpy
+faiss-cpu
+sentence-transformers
+scikit-learn
+openai
+rapidfuzz
+pyarrow
