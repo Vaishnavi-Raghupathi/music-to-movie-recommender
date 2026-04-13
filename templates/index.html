@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Home - Music-to-Movie{% endblock %}
+{% block content %}
+  <section class="card">
+    <h2>Movie Preferences</h2>
+    <form method="post" action="{{ url_for('recommend') }}">
+      <div class="grid">
+        <label>
+          <div class="label">Language (e.g. en, ta, hi)</div>
+          <input name="language" value="{{ (filters.language if filters else '') }}" />
+        </label>
+        <label>
+          <div class="label">Genre (e.g. Action, Romance)</div>
+          <input name="genre" value="{{ (filters.genre if filters else '') }}" />
+        </label>
+        <label>
+          <div class="label">Min rating (1–10)</div>
+          <input name="min_rating" value="{{ (filters.min_rating if filters else '') }}" />
+        </label>
+        <label>
+          <div class="label">Min popularity</div>
+          <input name="min_popularity" value="{{ (filters.min_popularity if filters else '') }}" />
+        </label>
+      </div>
+      <label class="checkbox">
+        <input type="checkbox" name="recent_only" value="y" {% if filters and filters.recent_only %}checked{% endif %} />
+        Only recent movies (2015+)
+      </label>
+
+      <div class="row">
+        {% if authed %}
+          <button class="btn" type="submit">Get recommendations</button>
+          <a class="btn secondary" href="{{ url_for('logout') }}">Log out</a>
+        {% else %}
+          <a class="btn" href="{{ url_for('login') }}">Login with Spotify</a>
+        {% endif %}
+      </div>
+    </form>
+    {% if authed_flag and not authed %}
+      <p class="muted">Login completed — reload if you don’t see the button.</p>
+    {% endif %}
+  </section>
+{% endblock %}
+

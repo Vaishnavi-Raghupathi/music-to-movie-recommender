@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Error - Music-to-Movie{% endblock %}
+{% block content %}
+  <section class="card error">
+    <h2>Something went wrong</h2>
+    <p>{{ message }}</p>
+    <a class="btn" href="{{ url_for('index') }}">Back</a>
+  </section>
+{% endblock %}
+

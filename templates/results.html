@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Results - Music-to-Movie{% endblock %}
+{% block content %}
+  <section class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+      <h2 style="margin:0;">Results</h2>
+      <a class="btn secondary" href="{{ url_for('logout') }}">Log out</a>
+    </div>
+    {% if filters %}
+      <p class="muted">
+        Filters:
+        {% if filters.language %} language={{ filters.language }} {% endif %}
+        {% if filters.genre %} genre={{ filters.genre }} {% endif %}
+        {% if filters.min_rating %} min_rating={{ filters.min_rating }} {% endif %}
+        {% if filters.min_popularity %} min_popularity={{ filters.min_popularity }} {% endif %}
+        {% if filters.recent_only %} recent_only=2015+ {% endif %}
+      </p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Your Top Tracks</h2>
+    {% if tracks %}
+      <ul>
+        {% for t in tracks %}
+          <li><strong>{{ t.name }}</strong> — {{ t.artist }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>No tracks found.</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Track-specific recommendations</h2>
+    {% for tr in individual_recs %}
+      <div class="card" style="background: rgba(255,255,255,0.04);">
+        <h3 style="margin-top:0;">{{ tr.track.name }} — {{ tr.track.artist }}</h3>
+        <p class="muted">{{ tr.descriptor }}</p>
+        {% if tr.movies %}
+          <ul>
+            {% for m in tr.movies %}
+              <li>
+                <strong>{{ m.title }}</strong>
+                <span class="muted">(sim={{ "%.3f"|format(m.similarity_score) }}, mood={{ "%.3f"|format(m.mood_match_score) }})</span><br/>
+                <span class="muted">{{ m.original_language }}</span> ·
+                <span class="muted">{{ m.vote_average }}</span> ·
+                <span class="muted">{{ m.genres }}</span><br/>
+                {{ m.overview }}
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="muted">No recommendations for this track.</p>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </section>
+
+  <section class="card">
+    <h2>Overall profile recommendations</h2>
+    {% if profile_recs %}
+      <ul>
+        {% for m in profile_recs %}
+          <li>
+            <strong>{{ m.title }}</strong>
+            <span class="muted">(sim={{ "%.3f"|format(m.similarity_score) }}, mood={{ "%.3f"|format(m.mood_match_score) }})</span><br/>
+            <span class="muted">{{ m.original_language }}</span> ·
+            <span class="muted">{{ m.vote_average }}</span> ·
+            <span class="muted">{{ m.genres }}</span><br/>
+            {{ m.overview }}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted">No profile recommendations.</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Vibe analysis</h2>
+    {% if vibe %}
+      <p><strong>Dominant mood:</strong> {{ vibe.dominant_mood }}</p>
+      <p><strong>Top descriptors:</strong> {{ vibe.top_descriptors|join(", ") }}</p>
+      {% if vibe.audio_averages %}
+        <p><strong>Audio averages:</strong></p>
+        <ul>
+          {% for k, v in vibe.audio_averages.items() %}
+            <li>{{ k }}: {{ "%.3f"|format(v) }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% else %}
+      <p class="muted">No vibe analysis available.</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <a class="btn" href="{{ url_for('index') }}">Start over</a>
+  </section>
+{% endblock %}
+

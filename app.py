@@ -1,335 +1,228 @@
-from flask import Flask, redirect, request, session, render_template_string
-from flask_session import Session
-from dotenv import load_dotenv
-import spotipy
-from spotipy.oauth2 import SpotifyOAuth
-import os
-from spotipy.cache_handler import CacheFileHandler
-import numpy as np
-import faiss
-import asyncio
-from openai import AsyncOpenAI
+from __future__ import annotations
 
-from music_to_movie import (
-    MusicToMovieRecommender,
-    load_datasets,
-    preprocess_movie_data,
-    apply_movie_filters,
-    create_music_feature_vectors,
-    get_keywords_batch,
-    create_movie_feature_vectors
+import hashlib
+import os
+
+import numpy as np
+import pandas as pd
+from flask import Flask, redirect, render_template, request, session, url_for
+from rapidfuzz import fuzz, process
+from sentence_transformers import SentenceTransformer
+
+import config
+from core.audio_projection import project_to_cinematic
+from core.genre_bridge import detect_genres_from_text, enrich_with_genre
+from core.movie_index import apply_filters, build_movie_index, build_tone_text
+from core.recommender import MusicToMovieRecommender
+from core.spotify_client import (
+    get_auth_url,
+    get_spotify_client,
+    get_token_from_code,
+    get_top_tracks,
+    refresh_if_expired,
 )
 
-load_dotenv()
+# ---------------------------------------------------------------------------
+# Startup (module-level globals, runs once)
+# ---------------------------------------------------------------------------
+
+sentence_model = SentenceTransformer(config.MODEL_NAME)
+
+spotify_df = pd.read_csv(config.DATASET_PATH)
+tmdb_df = pd.read_csv(config.TMDB_PATH)
+
+# Preprocess TMDB: ensure year + build tone_text (tone-based indexing, not plot)
+if "year" not in tmdb_df.columns:
+    if "release_date" in tmdb_df.columns:
+        tmdb_df["year"] = pd.to_datetime(tmdb_df["release_date"], errors="coerce").dt.year.fillna(0).astype(int)
+    else:
+        tmdb_df["year"] = 0
+
+tmdb_df["tone_text"] = tmdb_df.apply(build_tone_text, axis=1)
+
+# Cache FAISS index per filter hash
+INDEX_CACHE: dict[str, tuple] = {}
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _hash_filters(filters: dict) -> str:
+    payload = "|".join([f"{k}={filters.get(k)}" for k in sorted(filters.keys())])
+    return hashlib.md5(payload.encode("utf-8")).hexdigest()
+
+
+def get_best_audio_match(track: dict, spotify_df: pd.DataFrame) -> dict | None:
+    """
+    Match a Spotify track (name/artist) to a row in dataset.csv and return audio features dict.
+    Copied/adapted from prior version (exact/partial/fuzzy).
+    """
+    track_name = str(track.get("name", "")).lower()
+    artist_name = str(track.get("artist", "")).lower()
+    if not track_name or not artist_name:
+        return None
+
+    if "track_name" not in spotify_df.columns or "artists" not in spotify_df.columns:
+        return None
+
+    # exact match
+    exact_match = spotify_df[
+        (spotify_df["track_name"].astype(str).str.lower() == track_name)
+        & (spotify_df["artists"].astype(str).str.lower().str.contains(artist_name, na=False))
+    ]
+    if not exact_match.empty:
+        return exact_match.iloc[0].to_dict()
+
+    # partial match
+    partial_match = spotify_df[
+        (spotify_df["track_name"].astype(str).str.lower().str.contains(track_name, na=False))
+        & (spotify_df["artists"].astype(str).str.lower().str.contains(artist_name, na=False))
+    ]
+    if not partial_match.empty:
+        return partial_match.iloc[0].to_dict()
+
+    # fuzzy match
+    names = spotify_df["track_name"].astype(str).str.lower().tolist()
+    artists = spotify_df["artists"].astype(str).str.lower().tolist()
+
+    name_scores = process.cdist([track_name], names, scorer=fuzz.token_sort_ratio)[0]
+    artist_scores = process.cdist([artist_name], artists, scorer=fuzz.token_set_ratio)[0]
+    combined_scores = 0.6 * name_scores + 0.4 * artist_scores
+
+    best_idx = int(np.argmax(combined_scores))
+    if float(combined_scores[best_idx]) > 65:
+        return spotify_df.iloc[best_idx].to_dict()
+    return None
+
+
+def _track_to_features(track: dict) -> dict:
+    audio_features = get_best_audio_match(track, spotify_df) or {}
+    descriptor, cinematic_vec = project_to_cinematic(audio_features)
+
+    genre_text = f"{track.get('name','')} {track.get('artist','')} {' '.join(track.get('artist_genres', []))}"
+    detected = detect_genres_from_text(genre_text)
+    enriched_descriptor = enrich_with_genre(descriptor, detected)
+
+    text_embedding = sentence_model.encode([enriched_descriptor], show_progress_bar=False)[0]
+
+    return {
+        "track": track,
+        "audio_features": audio_features,
+        "descriptor": enriched_descriptor,
+        "cinematic_vector": cinematic_vec,
+        "text_embedding": np.asarray(text_embedding, dtype="float32"),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Flask app
+# ---------------------------------------------------------------------------
+
 
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "default-secret-key")
-app.config['SESSION_TYPE'] = 'filesystem'
-app.config['SESSION_PERMANENT'] = False
-Session(app)
+app.secret_key = config.FLASK_SECRET_KEY or "change-me"
 
-def session_cache_path():
-    return f".cache-{session.sid}"
 
-aclient = AsyncOpenAI(
-    api_key=os.getenv("PERPLEXITY_API_KEY"),
-    base_url="https://api.perplexity.ai"
-)
+@app.get("/")
+def index():
+    authed = bool(session.get("token_info"))
+    filters = session.get("filters") or {}
+    return render_template("index.html", authed=authed, filters=filters, authed_flag=request.args.get("authed") == "1")
 
-spotify_df, tmdb_df = load_datasets()
-tmdb_df = preprocess_movie_data(tmdb_df)
 
-def get_recommender():
-    filters = session.get('filters', {
-        'language': '', 
-        'genre': '',
-        'min_rating': '',
-        'min_popularity': '',
-        'year_range': ''
-    })
-    filtered_tmdb = apply_movie_filters(tmdb_df, filters)
-    if filtered_tmdb.empty:
-        raise ValueError("No movies match your filters. Please try different settings.")
-    faiss_index, movie_embeddings = create_movie_feature_vectors(filtered_tmdb)
-    return MusicToMovieRecommender(filtered_tmdb, faiss_index, movie_embeddings)
-
-@app.route('/')
-def home():
-    return render_template_string('''
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>MusicMovieMatch.exe</title>
-        <link rel="stylesheet" href="https://unpkg.com/98.css@0.1.22/dist/98.css">
-        <style>
-            body { background: #FFFFE0; }
-            .centered { display: flex; justify-content: center; align-items: center; height: 100vh; }
-        </style>
-    </head>
-    <body>
-    <div class="centered">
-      <div class="window" style="width: 400px;">
-        <div class="title-bar">
-          <div class="title-bar-text">MusicMovieMatch.exe</div>
-          <div class="title-bar-controls">
-            <button aria-label="Minimize"></button>
-            <button aria-label="Maximize"></button>
-            <button aria-label="Close"></button>
-          </div>
-        </div>
-        <div class="window-body">
-          <h2>Welcome to MusicMovieMatch</h2>
-          <p>Go to <a href="/filters">Set Preferences and Start</a></p>
-        </div>
-      </div>
-    </div>
-    </body>
-    </html>
-    ''')
-
-@app.route('/filters', methods=['GET', 'POST'])
-def filter_form():
-    if request.method == 'POST':
-        session['filters'] = {
-            'language': request.form.get('language', ''),
-            'genre': request.form.get('genre', ''),
-            'min_rating': request.form.get('min_rating', ''),
-            'min_popularity': request.form.get('min_popularity', ''),
-            'year_range': 'y' if request.form.get('year_range') == 'y' else 'n'
-        }
-        return redirect('/login')
-    return render_template_string('''
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Set Preferences - MusicMovieMatch.exe</title>
-        <link rel="stylesheet" href="https://unpkg.com/98.css@0.1.22/dist/98.css">
-        <style>
-            body { background: #FFFFE0; }
-            .centered { display: flex; justify-content: center; align-items: center; height: 100vh; }
-            .window { min-width: 350px; }
-            .window-body { padding: 20px 24px; }
-            fieldset { margin-bottom: 12px; }
-            label { display: block; margin-bottom: 8px; }
-            input[type="text"], select { width: 100%; margin-bottom: 12px; }
-            .field-row-stacked { margin-bottom: 12px; }
-            button { margin-top: 8px; }
-        </style>
-    </head>
-    <body>
-    <div class="centered">
-      <div class="window" style="width: 350px;">
-        <div class="title-bar">
-          <div class="title-bar-text">Movie Preferences</div>
-          <div class="title-bar-controls">
-            <button aria-label="Minimize"></button>
-            <button aria-label="Maximize"></button>
-            <button aria-label="Close"></button>
-          </div>
-        </div>
-        <div class="window-body">
-          <form method="post">
-            <fieldset>
-              <legend>Set your movie filters</legend>
-              <div class="field-row-stacked">
-                <label for="language">Language</label>
-                <input type="text" id="language" name="language" placeholder="e.g. en, ta, hi">
-              </div>
-              <div class="field-row-stacked">
-                <label for="genre">Genre</label>
-                <input type="text" id="genre" name="genre" placeholder="e.g. Action, Romance">
-              </div>
-              <div class="field-row-stacked">
-                <label for="min_rating">Min Rating</label>
-                <input type="text" id="min_rating" name="min_rating" placeholder="1-10">
-              </div>
-              <div class="field-row-stacked">
-                <label for="min_popularity">Min Popularity</label>
-                <input type="text" id="min_popularity" name="min_popularity" placeholder="e.g. 20">
-              </div>
-              <div class="field-row-stacked">
-                <label><input type="checkbox" name="year_range" value="y"> Only recent movies (2015+)</label>
-              </div>
-              <div class="field-row-stacked" style="text-align:center;">
-                <button type="submit">Continue to Spotify Login</button>
-              </div>
-            </fieldset>
-          </form>
-        </div>
-      </div>
-    </div>
-    </body>
-    </html>
-    ''')
-
-@app.route('/login', methods=['GET', 'POST'])  # Allow both GET and POST
+@app.get("/login")
 def login():
-    sp_oauth = SpotifyOAuth(
-        client_id=os.getenv("SPOTIFY_CLIENT_ID"),
-        client_secret=os.getenv("SPOTIFY_CLIENT_SECRET"),
-        redirect_uri=os.getenv("SPOTIFY_REDIRECT_URI"),
-        scope='user-library-read user-top-read',
-        cache_handler=CacheFileHandler(session_cache_path())
-    )
-    auth_url = sp_oauth.get_authorize_url()
-    return redirect(auth_url)
+    return redirect(get_auth_url())
 
-@app.route('/callback')
+
+@app.get("/callback")
 def callback():
-    sp_oauth = SpotifyOAuth(
-        client_id=os.getenv("SPOTIFY_CLIENT_ID"),
-        client_secret=os.getenv("SPOTIFY_CLIENT_SECRET"),
-        redirect_uri=os.getenv("SPOTIFY_REDIRECT_URI"),
-        scope='user-library-read user-top-read',
-        cache_handler=CacheFileHandler(session_cache_path())
-    )
-    code = request.args.get('code')
+    code = request.args.get("code")
     if not code:
-        return render_template_string('''
-        <div class="window" style="width:400px; margin:50px auto;">
-          <div class="title-bar"><div class="title-bar-text">Error</div></div>
-          <div class="window-body">Authorization failed: No code received</div>
-        </div>
-        ''')
-    try:
-        token_info = sp_oauth.get_access_token(code)
-        session['token_info'] = token_info
-        return redirect('/process')
-    except Exception as e:
-        return render_template_string(f'''
-        <div class="window" style="width:400px; margin:50px auto;">
-          <div class="title-bar"><div class="title-bar-text">Error</div></div>
-          <div class="window-body">Authorization failed: {str(e)}</div>
-        </div>
-        ''')
+        return render_template("error.html", message="Authorization failed: missing code."), 400
 
-@app.route('/process')
-def process_recommendations():
-    token_info = session.get('token_info')
+    token_info = get_token_from_code(code)
+    session["token_info"] = token_info
+    return redirect(url_for("index", authed=1))
+
+
+@app.post("/recommend")
+def recommend():
+    token_info = session.get("token_info")
     if not token_info:
-        return redirect('/login')
+        return redirect(url_for("login"))
+
+    # refresh token if needed
     try:
-        sp = spotipy.Spotify(auth=token_info['access_token'])
-        tracks_data = []
-        results = sp.current_user_top_tracks(limit=5)
-        for item in results['items']:
-            tracks_data.append({
-                'name': item['name'],
-                'artist': item['artists'][0]['name'],
-                'id': item['id']
-            })
-        tracks_for_keywords = [{'name': t['name'], 'artist': t['artist']} for t in tracks_data]
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        all_keywords = loop.run_until_complete(get_keywords_batch(tracks_for_keywords, aclient))
-        for i, track in enumerate(tracks_data):
-            track['keywords'] = all_keywords[i]
-        music_features = create_music_feature_vectors(tracks_data, spotify_df)
-        recommender = get_recommender()
-        individual_recommendations = recommender.batch_recommend(music_features, top_k=3)
-        profile_recommendations = recommender.recommend_for_profile(music_features, top_k=8)
-        vibe_analysis = recommender.analyze_music_vibe(music_features)
-        return render_template_string('''
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Results - MusicMovieMatch.exe</title>
-            <link rel="stylesheet" href="https://unpkg.com/98.css@0.1.22/dist/98.css">
-            <style>
-                body { background: #FFFFE0; }
-                .window-body { max-height: 80vh; overflow-y: auto; }
-                .movie-card { margin-bottom: 12px; padding: 8px; border: 1px solid #bbb; border-radius: 4px; background: #fff; }
-                .track-group { margin-bottom: 24px; }
-            </style>
-        </head>
-        <body>
-        <div class="window" style="width: 700px; margin: 40px auto;">
-          <div class="title-bar">
-            <div class="title-bar-text">MusicMovieMatch.exe - Results</div>
-            <div class="title-bar-controls">
-              <button aria-label="Minimize"></button>
-              <button aria-label="Maximize"></button>
-              <button aria-label="Close"></button>
-            </div>
-          </div>
-          <div class="window-body">
-            <div style="text-align:right;">
-                <a href="/logout">Log Out</a>
-            </div>                         
-            <h1>Your Recommendations</h1>
-            <h2>Track-Specific Matches</h2>
-            {% for track_recs in individual_recs %}
-            <fieldset class="track-group">
-                <legend>Based on: {{ track_recs.track.name }} by {{ track_recs.track.artist }}</legend>
-                {% for movie in track_recs.movies %}
-                <div class="movie-card">
-                    <b>{{ movie.title }}</b> <span style="color: #888;">({{ movie.similarity_score }})</span><br>
-                    <span style="font-size: 90%;">{{ movie.overview }}</span>
-                </div>
-                {% endfor %}
-            </fieldset>
-            {% endfor %}
-            <h2>Your Music Vibe Profile</h2>
-            <fieldset>
-                <legend>Vibe Analysis</legend>
-                <b>Dominant Mood:</b> {{ vibe.dominant_mood }}<br>
-                <b>Top Themes:</b>
-                <ul>
-                    {% for keyword, count in vibe.top_keywords %}
-                    <li>{{ keyword }} ({{ count }} mentions)</li>
-                    {% endfor %}
-                </ul>
-                <b>Audio Features:</b>
-                <ul>
-                    {% for feature, value in vibe.audio_profile.items() %}
-                    <li>{{ feature }}: {{ "%.2f"|format(value) }}</li>
-                    {% endfor %}
-                </ul>
-            </fieldset>
-            <h2>Overall Profile Matches</h2>
-            <p>Based on your complete music profile featuring:
-                {% for track in profile_tracks %}{{ track }}{% if not loop.last %}, {% endif %}{% endfor %}
-            </p>
-            {% for movie in profile_recs %}
-            <div class="movie-card">
-                <b>{{ movie.title }}</b> <span style="color: #888;">({{ movie.similarity_score }})</span><br>
-                <span style="font-size: 90%;">{{ movie.overview }}</span>
-            </div>
-            {% endfor %}
-            <div style="margin-top:30px; text-align:center;">
-                <button onclick="window.location.href='/'">Start Over</button>
-            </div>
-          </div>
-        </div>
-        </body>
-        </html>
-        ''', 
-        individual_recs=[{
-            'track': track['track'], 
-            'movies': recs
-        } for track, recs in zip(music_features, individual_recommendations)],
-        profile_recs=profile_recommendations,
-        profile_tracks=[t['track']['name'] for t in music_features],
-        vibe=vibe_analysis)
-    except Exception as e:
-        return render_template_string(f'''
-        <div class="window" style="width:500px; margin:50px auto;">
-          <div class="title-bar"><div class="title-bar-text">Error</div></div>
-          <div class="window-body">
-            <div style="color:red; padding:20px; border:1px solid red; margin:20px;">
-                Error generating recommendations: {str(e)}
-            </div>
-            <a href="/">Try Again</a>
-          </div>
-        </div>
-        ''')
-    
-@app.route('/logout')
+        token_info = refresh_if_expired(token_info)
+        session["token_info"] = token_info
+    except Exception:
+        pass
+
+    # 2. filters
+    filters = {
+        "language": (request.form.get("language") or "").strip(),
+        "genre": (request.form.get("genre") or "").strip(),
+        "min_rating": (request.form.get("min_rating") or "").strip(),
+        "min_popularity": (request.form.get("min_popularity") or "").strip(),
+        "recent_only": request.form.get("recent_only") == "y",
+    }
+    session["filters"] = filters
+
+    # Normalize numeric values
+    min_rating = float(filters["min_rating"]) if filters["min_rating"] else None
+    min_popularity = float(filters["min_popularity"]) if filters["min_popularity"] else None
+
+    cache_key = _hash_filters(filters)
+    if cache_key in INDEX_CACHE:
+        faiss_index, movie_embeddings, filtered_tmdb = INDEX_CACHE[cache_key]
+    else:
+        filtered_tmdb = apply_filters(
+            tmdb_df,
+            language=filters["language"] or None,
+            genre=filters["genre"] or None,
+            min_rating=min_rating,
+            min_popularity=min_popularity,
+            recent_only=bool(filters["recent_only"]),
+        )
+        if filtered_tmdb.empty:
+            return render_template("error.html", message="No movies match your filters. Try different settings."), 400
+
+        faiss_index, movie_embeddings, filtered_tmdb = build_movie_index(filtered_tmdb, sentence_model)
+        INDEX_CACHE[cache_key] = (faiss_index, movie_embeddings, filtered_tmdb)
+
+    sp = get_spotify_client(token_info)
+    tracks = get_top_tracks(sp, limit=config.TOP_TRACKS_LIMIT, time_range=config.TIME_RANGE)
+
+    music_features = [_track_to_features(t) for t in tracks]
+
+    recommender = MusicToMovieRecommender(filtered_tmdb, faiss_index, movie_embeddings, sentence_model)
+
+    individual_recs = []
+    for tf in music_features:
+        recs = recommender.recommend_for_track(tf, top_k=5)
+        individual_recs.append({"track": tf["track"], "descriptor": tf["descriptor"], "mood": None, "movies": recs})
+
+    profile_recs = recommender.recommend_for_profile(music_features, top_k=10)
+    vibe = recommender.analyze_vibe(music_features)
+
+    return render_template(
+        "results.html",
+        filters=filters,
+        tracks=tracks,
+        individual_recs=individual_recs,
+        profile_recs=profile_recs,
+        vibe=vibe,
+    )
+
+
+@app.get("/logout")
 def logout():
     session.clear()
-    cache_path = f".cache-{session.sid}"
-    if os.path.exists(cache_path):
-        os.remove(cache_path)
-    return redirect('/')
-if __name__ == '__main__':
-    app.run(debug=True, use_reloader=False)
+    return redirect(url_for("index"))
+
+
+if __name__ == "__main__":
+    debug = os.getenv("FLASK_DEBUG", "").strip() == "1"
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=debug)
