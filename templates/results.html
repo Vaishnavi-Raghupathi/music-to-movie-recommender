@@ -1,102 +1,320 @@
 {% extends "base.html" %}
-{% block title %}Results - Music-to-Movie{% endblock %}
 {% block content %}
-  <section class="card">
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
-      <h2 style="margin:0;">Results</h2>
-      <a class="btn secondary" href="{{ url_for('logout') }}">Log out</a>
+
+{# ─────────────────────────────────────────────────────────────────────────
+   Data shapes from app.py / recommender.py (for reference):
+   vibe          = {dominant_mood:str, top_descriptors:[str],
+                    audio_averages:{str:float}, track_moods:[str]}
+   individual_recs = [{track:{name,artist,...}, descriptor:str,
+                        mood:None, movies:[movie_dict]}]
+   profile_recs  = [movie_dict]
+   movie_dict    = {title, overview(≤180 chars), genres, vote_average(float),
+                    original_language, similarity_score(float), mood_match_score}
+   filters       = {language, genre, min_rating, min_popularity, recent_only(bool)}
+   ───────────────────────────────────────────────────────────────────────── #}
+
+<style>
+  /* details/summary arrow — ::before only, no extra span */
+  details > summary { list-style: none; cursor: pointer; user-select: none; }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::before { content: "▶  "; }
+  details[open] > summary::before { content: "▼  "; }
+
+  /* 2-col grid for overall picks */
+  .movie-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .top-pick-card {
+    background: #ffffff;
+    border-left: 3px solid #000080;
+    border: 1px solid #ccc;
+    border-left: 3px solid #000080;
+    padding: 8px;
+  }
+  @media (max-width: 600px) {
+    .movie-grid { grid-template-columns: 1fr; }
+  }
+</style>
+
+
+<!-- ══════════════════════════════════════════════════
+     Window 1 · Your Music Vibe Profile
+     ══════════════════════════════════════════════════ -->
+<div class="window" id="win-vibe">
+  <div class="title-bar">
+    <div class="title-bar-text">📊 Your Music Vibe Profile</div>
+    <div class="title-bar-controls">
+      <button aria-label="Minimize"></button>
+      <button aria-label="Maximize"></button>
+      <button aria-label="Close"></button>
     </div>
-    {% if filters %}
-      <p class="muted">
-        Filters:
-        {% if filters.language %} language={{ filters.language }} {% endif %}
-        {% if filters.genre %} genre={{ filters.genre }} {% endif %}
-        {% if filters.min_rating %} min_rating={{ filters.min_rating }} {% endif %}
-        {% if filters.min_popularity %} min_popularity={{ filters.min_popularity }} {% endif %}
-        {% if filters.recent_only %} recent_only=2015+ {% endif %}
-      </p>
-    {% endif %}
-  </section>
+  </div>
 
-  <section class="card">
-    <h2>Your Top Tracks</h2>
-    {% if tracks %}
-      <ul>
-        {% for t in tracks %}
-          <li><strong>{{ t.name }}</strong> — {{ t.artist }}</li>
-        {% endfor %}
-      </ul>
-    {% else %}
-      <p>No tracks found.</p>
-    {% endif %}
-  </section>
-
-  <section class="card">
-    <h2>Track-specific recommendations</h2>
-    {% for tr in individual_recs %}
-      <div class="card" style="background: rgba(255,255,255,0.04);">
-        <h3 style="margin-top:0;">{{ tr.track.name }} — {{ tr.track.artist }}</h3>
-        <p class="muted">{{ tr.descriptor }}</p>
-        {% if tr.movies %}
-          <ul>
-            {% for m in tr.movies %}
-              <li>
-                <strong>{{ m.title }}</strong>
-                <span class="muted">(sim={{ "%.3f"|format(m.similarity_score) }}, mood={{ "%.3f"|format(m.mood_match_score) }})</span><br/>
-                <span class="muted">{{ m.original_language }}</span> ·
-                <span class="muted">{{ m.vote_average }}</span> ·
-                <span class="muted">{{ m.genres }}</span><br/>
-                {{ m.overview }}
-              </li>
-            {% endfor %}
-          </ul>
-        {% else %}
-          <p class="muted">No recommendations for this track.</p>
-        {% endif %}
-      </div>
-    {% endfor %}
-  </section>
-
-  <section class="card">
-    <h2>Overall profile recommendations</h2>
-    {% if profile_recs %}
-      <ul>
-        {% for m in profile_recs %}
-          <li>
-            <strong>{{ m.title }}</strong>
-            <span class="muted">(sim={{ "%.3f"|format(m.similarity_score) }}, mood={{ "%.3f"|format(m.mood_match_score) }})</span><br/>
-            <span class="muted">{{ m.original_language }}</span> ·
-            <span class="muted">{{ m.vote_average }}</span> ·
-            <span class="muted">{{ m.genres }}</span><br/>
-            {{ m.overview }}
-          </li>
-        {% endfor %}
-      </ul>
-    {% else %}
-      <p class="muted">No profile recommendations.</p>
-    {% endif %}
-  </section>
-
-  <section class="card">
-    <h2>Vibe analysis</h2>
+  <div class="window-body">
     {% if vibe %}
-      <p><strong>Dominant mood:</strong> {{ vibe.dominant_mood }}</p>
-      <p><strong>Top descriptors:</strong> {{ vibe.top_descriptors|join(", ") }}</p>
-      {% if vibe.audio_averages %}
-        <p><strong>Audio averages:</strong></p>
-        <ul>
-          {% for k, v in vibe.audio_averages.items() %}
-            <li>{{ k }}: {{ "%.3f"|format(v) }}</li>
+
+      <!-- Dominant mood -->
+      <p style="font-size:18px; font-weight:bold; margin:0 0 10px;">
+        {{ vibe.dominant_mood }}
+      </p>
+
+      <!-- Top-8 descriptor badges -->
+      {% if vibe.top_descriptors %}
+        <div style="margin-bottom:12px; line-height:1.8;">
+          {% for d in vibe.top_descriptors[:8] %}
+            <span class="score-badge" style="margin:2px 3px 2px 0; display:inline-block;">{{ d }}</span>
           {% endfor %}
-        </ul>
+        </div>
       {% endif %}
+
+      <hr />
+
+      <!-- Audio feature bars
+           danceability / energy / valence / acousticness : 0-1  → bar width = val * 200 px
+           tempo                                           : BPM  → bar width = val * 0.8 px, capped 200 -->
+      {% if vibe.audio_averages %}
+        {% set bar_features = ['danceability', 'energy', 'valence', 'acousticness', 'tempo'] %}
+        <table style="width:100%; border-collapse:collapse; margin-bottom:10px;">
+          {% for feat in bar_features %}
+            {% if feat in vibe.audio_averages %}
+              {% set val = vibe.audio_averages[feat] %}
+              <tr>
+                <td style="width:110px; padding:3px 8px 3px 0;
+                           text-align:right; white-space:nowrap; font-size:11px;">
+                  {{ feat | capitalize }}
+                </td>
+                <td style="padding:3px 0;">
+                  {% if feat == 'tempo' %}
+                    {# FIX: set + read in the SAME block scope — no nested reassignment #}
+                    {% set bw = (val * 0.8) | int %}
+                    <span class="vibe-bar"
+                          style="width:{{ bw if bw <= 200 else 200 }}px;"
+                          title="{{ '%.1f' | format(val) }} BPM"></span>
+                    <span style="margin-left:6px; font-size:10px;">
+                      {{ '%.0f' | format(val) }} BPM
+                    </span>
+                  {% else %}
+                    {% set bw = (val * 200) | int %}
+                    <span class="vibe-bar"
+                          style="width:{{ bw if bw <= 200 else 200 }}px;"
+                          title="{{ '%.3f' | format(val) }}"></span>
+                    <span style="margin-left:6px; font-size:10px;">
+                      {{ '%.2f' | format(val) }}
+                    </span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endif %}
+          {% endfor %}
+        </table>
+      {% endif %}
+
+      <!-- Per-track mood table -->
+      {% if individual_recs %}
+        <hr />
+        <p style="font-weight:bold; margin:6px 0;">Track Mood Labels</p>
+        <table style="width:100%; border-collapse:collapse; font-size:10px;">
+          <thead>
+            <tr style="background:#000080; color:#fff;">
+              <th style="padding:3px 6px; text-align:left;">Track</th>
+              <th style="padding:3px 6px; text-align:left;">Artist</th>
+              <th style="padding:3px 6px; text-align:left;">Descriptor</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for tr in individual_recs %}
+              <tr style="background:{% if loop.index is odd %}#f0f0f0{% else %}#ffffff{% endif %};">
+                <td style="padding:3px 6px; border:1px solid #ddd;">{{ tr.track.name }}</td>
+                <td style="padding:3px 6px; border:1px solid #ddd;">{{ tr.track.artist }}</td>
+                <td style="padding:3px 6px; border:1px solid #ddd;">{{ tr.descriptor or '—' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+
     {% else %}
-      <p class="muted">No vibe analysis available.</p>
+      <p>No vibe analysis available.</p>
     {% endif %}
-  </section>
+  </div>
+</div>
+<!-- /Window 1 -->
 
-  <section class="card">
-    <a class="btn" href="{{ url_for('index') }}">Start over</a>
-  </section>
+
+<!-- ══════════════════════════════════════════════════
+     Window 2 · Movies For Each Track
+     ══════════════════════════════════════════════════ -->
+<div class="window" id="win-per-track">
+  <div class="title-bar">
+    <div class="title-bar-text">🎬 Movies For Each Track</div>
+    <div class="title-bar-controls">
+      <button aria-label="Minimize"></button>
+      <button aria-label="Maximize"></button>
+      <button aria-label="Close"></button>
+    </div>
+  </div>
+
+  <div class="window-body">
+    {% if individual_recs %}
+      {% for tr in individual_recs %}
+        {# track_idx set at the outer for-loop body level → readable in nested inner loops #}
+        {% set track_idx = loop.index %}
+
+        <details class="track-card" id="track-detail-{{ track_idx }}">
+          {# No inline ▶ span — CSS ::before handles the arrow to avoid duplication #}
+          <summary style="font-weight:bold; padding:2px 0;">
+            ♪ {{ tr.track.name }} — {{ tr.track.artist }}
+            {% if tr.descriptor %}
+              <span class="score-badge" style="margin-left:6px; vertical-align:middle;">
+                {{ tr.descriptor | truncate(30, true, '…') }}
+              </span>
+            {% endif %}
+          </summary>
+
+          <!-- Movie cards (up to 3 per track) -->
+          {% if tr.movies %}
+            {% for m in tr.movies[:3] %}
+              {# FIX: use track_idx (outer) + loop.index (inner) — both are unique and in scope #}
+              <div class="movie-rec" id="movie-rec-{{ track_idx }}-{{ loop.index }}">
+                <!-- Title row -->
+                <table style="width:100%; border-collapse:collapse;">
+                  <tr>
+                    <td style="vertical-align:top; padding-right:8px;">
+                      <strong>{{ m.title }}</strong>
+                    </td>
+                    <td style="white-space:nowrap; text-align:right; font-size:10px;">
+                      <span class="score-badge">{{ m.original_language | upper }}</span>
+                      &nbsp;⭐ {{ '%.1f' | format(m.vote_average) }}
+                    </td>
+                  </tr>
+                </table>
+                <!-- Genres -->
+                <p style="font-style:italic; margin:2px 0; font-size:10px; color:#555;">
+                  {{ m.genres or '—' }}
+                </p>
+                <!-- Overview (recommender pre-truncates to 180 chars) -->
+                <p style="margin:3px 0; font-size:10px;">
+                  {{ m.overview or '' }}{% if m.overview and m.overview | length == 180 %}…{% endif %}
+                </p>
+                <!-- Similarity bar
+                     FIX: sim_w clamped to [0, 300] — similarity_score is cosine-like, can be negative -->
+                <div style="margin-top:4px; display:flex; align-items:center; gap:6px;">
+                  <span style="font-size:10px; white-space:nowrap;">Similarity:</span>
+                  {% if m.similarity_score > 0 %}
+                    {% set sim_w = (m.similarity_score * 300) | int %}
+                    <span class="vibe-bar"
+                          style="width:{{ sim_w if sim_w <= 300 else 300 }}px;"
+                          title="{{ '%.3f' | format(m.similarity_score) }}"></span>
+                    <span style="font-size:10px;">{{ '%.2f' | format(m.similarity_score) }}</span>
+                  {% else %}
+                    <span class="vibe-bar" style="width:0px;"></span>
+                    <span style="font-size:10px;">0.00</span>
+                  {% endif %}
+                </div>
+              </div><!-- /movie-rec -->
+            {% endfor %}
+          {% else %}
+            <p style="font-style:italic; padding:6px 0; font-size:10px;">
+              No recommendations found for this track.
+            </p>
+          {% endif %}
+
+        </details>
+
+      {% endfor %}
+    {% else %}
+      <p>No per-track recommendations available.</p>
+    {% endif %}
+  </div>
+</div>
+<!-- /Window 2 -->
+
+
+<!-- ══════════════════════════════════════════════════
+     Window 3 · Overall Vibe — Top Movie Picks
+     ══════════════════════════════════════════════════ -->
+<div class="window" id="win-top-picks">
+  <div class="title-bar">
+    <div class="title-bar-text">🌟 Your Overall Vibe — Top Movie Picks</div>
+    <div class="title-bar-controls">
+      <button aria-label="Minimize"></button>
+      <button aria-label="Maximize"></button>
+      <button aria-label="Close"></button>
+    </div>
+  </div>
+
+  <div class="window-body">
+
+    <!-- Active-filters banner -->
+    {% if filters and (filters.language or filters.genre
+                       or filters.min_rating or filters.min_popularity
+                       or filters.recent_only) %}
+      <div style="background:#f0f0f0; border:1px solid #999;
+                  padding:4px 8px; margin-bottom:8px; font-size:10px;">
+        <strong>Filters:</strong>
+        {% if filters.language %}&nbsp;lang=<em>{{ filters.language }}</em>{% endif %}
+        {% if filters.genre %}&nbsp;genre=<em>{{ filters.genre }}</em>{% endif %}
+        {% if filters.min_rating %}&nbsp;min_rating=<em>{{ filters.min_rating }}</em>{% endif %}
+        {% if filters.min_popularity %}&nbsp;min_pop=<em>{{ filters.min_popularity }}</em>{% endif %}
+        {% if filters.recent_only %}&nbsp;<em>recent only (2015+)</em>{% endif %}
+      </div>
+    {% endif %}
+
+    {% if profile_recs %}
+      <div class="movie-grid" id="top-picks-grid">
+        {% for m in profile_recs %}
+          <div class="top-pick-card" id="top-pick-{{ loop.index }}">
+            <!-- Title + rating -->
+            <div style="display:flex; justify-content:space-between;
+                        align-items:flex-start; gap:6px;">
+              <strong style="font-size:12px;">{{ m.title }}</strong>
+              <span style="white-space:nowrap; font-size:10px;">
+                ⭐ {{ '%.1f' | format(m.vote_average) }}
+              </span>
+            </div>
+            <!-- Genres -->
+            <p style="font-style:italic; font-size:10px; color:#555; margin:2px 0;">
+              {{ m.genres or '—' }}
+            </p>
+            <!-- Language badge -->
+            <div style="margin:2px 0;">
+              <span class="score-badge">{{ m.original_language | upper }}</span>
+            </div>
+            <!-- Overview (recommender pre-truncates to 180 chars) -->
+            <p style="font-size:10px; margin:4px 0 0;">
+              {{ m.overview or '' }}{% if m.overview and m.overview | length == 180 %}…{% endif %}
+            </p>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p>No overall recommendations available.</p>
+    {% endif %}
+
+  </div>
+</div>
+<!-- /Window 3 -->
+
+
+<!-- ══════════════════════════════════════════════════
+     Window 4 · Start Over
+     ══════════════════════════════════════════════════ -->
+<div class="window" id="win-start-over">
+  <div class="title-bar">
+    <div class="title-bar-text">↩ Start Over</div>
+    <div class="title-bar-controls">
+      <button aria-label="Minimize"></button>
+      <button aria-label="Maximize"></button>
+      <button aria-label="Close"></button>
+    </div>
+  </div>
+  <div class="window-body" style="display:flex; gap:8px; align-items:center;">
+    <a class="btn" href="{{ url_for('index') }}" id="start-over-btn">↩ Back to Start</a>
+    <a class="btn" href="{{ url_for('logout') }}" id="results-logout-btn">🔌 Log Out</a>
+  </div>
+</div>
+<!-- /Window 4 -->
+
 {% endblock %}
-

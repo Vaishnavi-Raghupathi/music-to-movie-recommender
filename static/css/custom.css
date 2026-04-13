@@ -1,100 +1,241 @@
+/* ============================================================
+   MusicMatch 98 — custom.css
+   Windows 95/98 hybrid aesthetic layered on top of 98.css
+   ============================================================ */
+
+/* --- Base / Desktop ---------------------------------------- */
 body {
   margin: 0;
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji",
-    "Segoe UI Emoji";
-  background: #0b1020;
-  color: #e8e8ef;
+  padding-bottom: 40px;          /* leave room for taskbar */
+  font-family: 'MS Sans Serif', Arial, sans-serif;
+  font-size: 11px;
+  background: #008080;           /* classic teal desktop */
+  color: #000;
+  cursor: default;
 }
 
+/* Hourglass while loading is set inline via JS (body.style.cursor='wait') */
+
+.desktop {
+  min-height: calc(100vh - 40px);
+  padding: 16px 0 8px;
+}
+
+/* --- Main window -------------------------------------------- */
+.window {
+  max-width: 860px;
+  margin: 32px auto;
+}
+
+.window-body {
+  padding: 8px;
+}
+
+/* Tables inside window bodies take full width */
+.window-body table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+/* --- Links -------------------------------------------------- */
+a,
+a:visited {
+  color: #0000ee;
+  text-decoration: underline;
+}
+a:active {
+  color: #cc0000;
+}
+
+/* --- Scrollbar (chunky / pixelated Win98 look) ------------- */
+::-webkit-scrollbar {
+  width: 16px;
+  height: 16px;
+}
+::-webkit-scrollbar-track {
+  background: #c0c0c0;
+  border: 1px solid #808080;
+}
+::-webkit-scrollbar-thumb {
+  background: #c0c0c0;
+  border-top: 2px solid #ffffff;
+  border-left: 2px solid #ffffff;
+  border-right: 2px solid #808080;
+  border-bottom: 2px solid #808080;
+}
+::-webkit-scrollbar-button {
+  background: #c0c0c0;
+  border-top: 2px solid #ffffff;
+  border-left: 2px solid #ffffff;
+  border-right: 2px solid #808080;
+  border-bottom: 2px solid #808080;
+  height: 16px;
+  width: 16px;
+}
+
+/* --- Pixel-style horizontal rule --------------------------- */
+hr {
+  border: none;
+  border-top: 2px solid #808080;
+  border-bottom: 1px solid #ffffff;
+  margin: 8px 0;
+}
+
+/* --- Track card -------------------------------------------- */
+.track-card {
+  background: #ffffff;
+  border: 1px solid #999999;
+  padding: 8px;
+  margin-bottom: 12px;
+}
+
+/* --- Movie recommendation block ---------------------------- */
+.movie-rec {
+  background: #f0f0f0;
+  padding: 6px;
+  margin: 4px 0;
+}
+
+/* --- Vibe bar (horizontal fill indicator) ------------------ */
+.vibe-bar {
+  display: inline-block;
+  height: 12px;
+  background: #000080;           /* navy */
+  vertical-align: middle;
+}
+
+/* --- Score badge ------------------------------------------- */
+.score-badge {
+  display: inline-block;
+  background: #000080;           /* navy */
+  color: #ffffff;
+  font-size: 10px;
+  padding: 1px 4px;
+  font-family: 'MS Sans Serif', Arial, sans-serif;
+}
+
+/* --- Taskbar ----------------------------------------------- */
+.taskbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 36px;
+  background: #c0c0c0;
+  border-top: 2px solid #ffffff;
+  display: flex;
+  align-items: center;
+  padding: 2px 4px;
+  gap: 4px;
+  z-index: 9999;
+  box-sizing: border-box;
+}
+
+.start-btn {
+  height: 28px;
+  padding: 0 10px;
+  font-family: 'MS Sans Serif', Arial, sans-serif;
+  font-size: 11px;
+  font-weight: bold;
+  background: #c0c0c0;
+  border-top: 2px solid #ffffff;
+  border-left: 2px solid #ffffff;
+  border-right: 2px solid #808080;
+  border-bottom: 2px solid #808080;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+.start-btn:active {
+  border-top: 2px solid #808080;
+  border-left: 2px solid #808080;
+  border-right: 2px solid #ffffff;
+  border-bottom: 2px solid #ffffff;
+}
+
+.taskbar-separator {
+  width: 2px;
+  height: 28px;
+  border-left: 1px solid #808080;
+  border-right: 1px solid #ffffff;
+  margin: 0 2px;
+}
+
+.taskbar-app-btn {
+  height: 26px;
+  padding: 0 10px;
+  font-family: 'MS Sans Serif', Arial, sans-serif;
+  font-size: 11px;
+  background: #c0c0c0;
+  border-top: 2px solid #808080;
+  border-left: 2px solid #808080;
+  border-right: 2px solid #ffffff;
+  border-bottom: 2px solid #ffffff;
+  display: flex;
+  align-items: center;
+  min-width: 120px;
+}
+.taskbar-app-btn.active {
+  background: repeating-linear-gradient(
+    to right,
+    #c0c0c0 0px,
+    #c0c0c0 1px,
+    #d4d4d4 1px,
+    #d4d4d4 2px
+  );
+}
+
+.taskbar-clock {
+  margin-left: auto;
+  height: 26px;
+  padding: 0 8px;
+  font-family: 'MS Sans Serif', Arial, sans-serif;
+  font-size: 11px;
+  background: #c0c0c0;
+  border-top: 1px solid #808080;
+  border-left: 1px solid #808080;
+  border-right: 1px solid #ffffff;
+  border-bottom: 1px solid #ffffff;
+  display: flex;
+  align-items: center;
+}
+
+/* --- Legacy classes kept for compatibility ----------------- */
 .container {
   max-width: 860px;
   margin: 0 auto;
   padding: 32px 18px;
 }
-
-.header {
-  margin-bottom: 18px;
-}
-
-.brand {
-  margin: 0;
-  font-size: 22px;
-  letter-spacing: 0.2px;
-}
-
-.card {
-  background: #111a33;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
-  padding: 18px;
-  margin: 14px 0;
-}
-
 .btn {
   display: inline-block;
-  padding: 10px 14px;
-  background: #5b7cfa;
-  color: white;
-  text-decoration: none;
-  border-radius: 10px;
-  border: 0;
+  padding: 4px 10px;
+  font-family: 'MS Sans Serif', Arial, sans-serif;
+  font-size: 11px;
+  background: #c0c0c0;
+  border-top: 2px solid #ffffff;
+  border-left: 2px solid #ffffff;
+  border-right: 2px solid #808080;
+  border-bottom: 2px solid #808080;
   cursor: pointer;
-  font-size: 14px;
+  text-decoration: none;
+  color: #000;
+}
+.btn:active {
+  border-top: 2px solid #808080;
+  border-left: 2px solid #808080;
+  border-right: 2px solid #ffffff;
+  border-bottom: 2px solid #ffffff;
+}
+.error {
+  border: 1px solid red;
 }
 
-.btn.secondary {
-  background: rgba(255, 255, 255, 0.12);
-}
-
-.row {
-  display: flex;
-  gap: 10px;
-  margin-top: 14px;
-  align-items: center;
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.06);
-  color: #e8e8ef;
-}
-
-.label {
-  font-size: 12px;
-  opacity: 0.85;
-  margin-bottom: 6px;
-}
-
-.checkbox {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  margin-top: 10px;
-}
-
-.muted {
-  opacity: 0.75;
-  margin-top: 12px;
-  font-size: 13px;
-}
-
-@media (max-width: 700px) {
-  .grid {
-    grid-template-columns: 1fr;
+/* --- Responsive: mobile ------------------------------------ */
+@media (max-width: 600px) {
+  .window {
+    margin: 8px;
+  }
+  body {
+    font-size: 12px;
   }
 }
-
-.error {
-  border-color: rgba(255, 0, 0, 0.35);
-}
-

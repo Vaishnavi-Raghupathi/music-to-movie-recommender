@@ -225,4 +225,5 @@ def logout():
 
 if __name__ == "__main__":
     debug = os.getenv("FLASK_DEBUG", "").strip() == "1"
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=debug)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=debug)

@@ -1,44 +1,140 @@
 {% extends "base.html" %}
-{% block title %}Home - Music-to-Movie{% endblock %}
 {% block content %}
-  <section class="card">
-    <h2>Movie Preferences</h2>
-    <form method="post" action="{{ url_for('recommend') }}">
-      <div class="grid">
-        <label>
-          <div class="label">Language (e.g. en, ta, hi)</div>
-          <input name="language" value="{{ (filters.language if filters else '') }}" />
-        </label>
-        <label>
-          <div class="label">Genre (e.g. Action, Romance)</div>
-          <input name="genre" value="{{ (filters.genre if filters else '') }}" />
-        </label>
-        <label>
-          <div class="label">Min rating (1–10)</div>
-          <input name="min_rating" value="{{ (filters.min_rating if filters else '') }}" />
-        </label>
-        <label>
-          <div class="label">Min popularity</div>
-          <input name="min_popularity" value="{{ (filters.min_popularity if filters else '') }}" />
-        </label>
-      </div>
-      <label class="checkbox">
-        <input type="checkbox" name="recent_only" value="y" {% if filters and filters.recent_only %}checked{% endif %} />
-        Only recent movies (2015+)
-      </label>
 
-      <div class="row">
-        {% if authed %}
-          <button class="btn" type="submit">Get recommendations</button>
-          <a class="btn secondary" href="{{ url_for('logout') }}">Log out</a>
-        {% else %}
-          <a class="btn" href="{{ url_for('login') }}">Login with Spotify</a>
-        {% endif %}
-      </div>
+<div class="window" id="index-window">
+  <div class="title-bar">
+    <div class="title-bar-text">🎵 MusicMatch 98 — Find Your Movie Vibe</div>
+    <div class="title-bar-controls">
+      <button aria-label="Minimize"></button>
+      <button aria-label="Maximize"></button>
+      <button aria-label="Close"></button>
+    </div>
+  </div>
+
+  <div class="window-body">
+
+    <form method="post" action="{{ url_for('recommend') }}" id="recommend-form">
+
+      <!-- ── Step 1: Movie Preferences ─────────────────────────── -->
+      <fieldset id="fieldset-prefs">
+        <legend>📽 Step 1: Set Movie Preferences</legend>
+
+        <table style="width:100%; border-collapse:collapse;">
+          <tr>
+            <!-- Language -->
+            <td style="padding:6px 8px 6px 0; width:50%; vertical-align:top;">
+              <label for="lang-select" style="display:block; margin-bottom:3px;">Language</label>
+              <select name="language" id="lang-select" style="width:100%;">
+                <option value="">— Any —</option>
+                <option value="en"  {% if filters and filters.language == 'en'  %}selected{% endif %}>English (en)</option>
+                <option value="ta"  {% if filters and filters.language == 'ta'  %}selected{% endif %}>Tamil (ta)</option>
+                <option value="hi"  {% if filters and filters.language == 'hi'  %}selected{% endif %}>Hindi (hi)</option>
+                <option value="ko"  {% if filters and filters.language == 'ko'  %}selected{% endif %}>Korean (ko)</option>
+                <option value="fr"  {% if filters and filters.language == 'fr'  %}selected{% endif %}>French (fr)</option>
+                <option value="es"  {% if filters and filters.language == 'es'  %}selected{% endif %}>Spanish (es)</option>
+                <option value="ja"  {% if filters and filters.language == 'ja'  %}selected{% endif %}>Japanese (ja)</option>
+                <option value="de"  {% if filters and filters.language == 'de'  %}selected{% endif %}>German (de)</option>
+                <option value="it"  {% if filters and filters.language == 'it'  %}selected{% endif %}>Italian (it)</option>
+                <option value="pt"  {% if filters and filters.language == 'pt'  %}selected{% endif %}>Portuguese (pt)</option>
+              </select>
+            </td>
+
+            <!-- Genre -->
+            <td style="padding:6px 0 6px 0; width:50%; vertical-align:top;">
+              <label for="genre-select" style="display:block; margin-bottom:3px;">Genre</label>
+              <select name="genre" id="genre-select" style="width:100%;">
+                <option value="">— Any —</option>
+                <option value="Action"          {% if filters and filters.genre == 'Action'          %}selected{% endif %}>Action</option>
+                <option value="Drama"           {% if filters and filters.genre == 'Drama'           %}selected{% endif %}>Drama</option>
+                <option value="Comedy"          {% if filters and filters.genre == 'Comedy'          %}selected{% endif %}>Comedy</option>
+                <option value="Romance"         {% if filters and filters.genre == 'Romance'         %}selected{% endif %}>Romance</option>
+                <option value="Thriller"        {% if filters and filters.genre == 'Thriller'        %}selected{% endif %}>Thriller</option>
+                <option value="Horror"          {% if filters and filters.genre == 'Horror'          %}selected{% endif %}>Horror</option>
+                <option value="Animation"       {% if filters and filters.genre == 'Animation'       %}selected{% endif %}>Animation</option>
+                <option value="Documentary"     {% if filters and filters.genre == 'Documentary'     %}selected{% endif %}>Documentary</option>
+                <option value="Science Fiction" {% if filters and filters.genre == 'Science Fiction' %}selected{% endif %}>Science Fiction</option>
+                <option value="Mystery"         {% if filters and filters.genre == 'Mystery'         %}selected{% endif %}>Mystery</option>
+                <option value="Crime"           {% if filters and filters.genre == 'Crime'           %}selected{% endif %}>Crime</option>
+              </select>
+            </td>
+          </tr>
+
+          <tr>
+            <!-- Min Rating -->
+            <td style="padding:6px 8px 6px 0; vertical-align:top;">
+              <label for="min-rating" style="display:block; margin-bottom:3px;">Min Rating (0–10)</label>
+              <input type="number" name="min_rating" id="min-rating"
+                     min="0" max="10" step="0.5" style="width:100%;"
+                     value="{{ filters.min_rating if filters and filters.min_rating else '' }}"
+                     placeholder="e.g. 7.0" />
+            </td>
+
+            <!-- Min Popularity -->
+            <td style="padding:6px 0 6px 0; vertical-align:top;">
+              <label for="min-pop" style="display:block; margin-bottom:3px;">Min Popularity</label>
+              <input type="number" name="min_popularity" id="min-pop"
+                     min="0" step="1" style="width:100%;"
+                     value="{{ filters.min_popularity if filters and filters.min_popularity else '' }}"
+                     placeholder="e.g. 50" />
+            </td>
+          </tr>
+        </table>
+
+        <!-- Recent only checkbox -->
+        <div style="margin-top:8px;">
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+            <input type="checkbox" name="recent_only" id="recent-only" value="y"
+                   {% if filters and filters.recent_only %}checked{% endif %} />
+            Recent movies only (2015+)
+          </label>
+        </div>
+
+      </fieldset>
+      <!-- /Step 1 -->
+
+      <hr />
+
+      <!-- ── Step 2: Connect Spotify ───────────────────────────── -->
+      <fieldset id="fieldset-spotify">
+        <legend>🎸 Step 2: Connect Spotify</legend>
+
+        <div style="padding:8px 4px;">
+          {% if authed %}
+            <p style="color:green; font-weight:bold; margin:0 0 10px;">
+              ✅ Spotify Connected
+            </p>
+            <button type="submit" id="submit-btn" class="btn">▶ Get Recommendations</button>
+            &nbsp;
+            <a class="btn" href="{{ url_for('logout') }}" id="logout-btn">🔌 Log Out</a>
+          {% else %}
+            <p style="margin:0 0 10px;">
+              Connect your Spotify account so MusicMatch 98 can read your top tracks.
+            </p>
+            <a class="btn" href="{{ url_for('login') }}" id="spotify-login-btn"
+               style="font-size:13px; padding:6px 14px;">
+              🎸 Login with Spotify
+            </a>
+            {% if authed_flag %}
+              <p style="margin-top:8px; font-style:italic;">
+                Login completed — reload the page if the button does not update.
+              </p>
+            {% endif %}
+          {% endif %}
+        </div>
+
+      </fieldset>
+      <!-- /Step 2 -->
+
     </form>
-    {% if authed_flag and not authed %}
-      <p class="muted">Login completed — reload if you don’t see the button.</p>
-    {% endif %}
-  </section>
-{% endblock %}
 
+    <hr />
+
+    <p style="font-style:italic; color:#555; font-size:10px; margin:6px 0 0;">
+      Recommendations are generated from your Spotify listening history
+      using audio feature analysis — no AI, no external APIs.
+    </p>
+
+  </div><!-- /.window-body -->
+</div><!-- /.window -->
+
+{% endblock %}

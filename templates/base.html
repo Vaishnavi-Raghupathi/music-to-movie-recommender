@@ -1,19 +1,58 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>{% block title %}Music-to-Movie Recommender{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}" />
-  </head>
-  <body>
-    <main class="container">
-      <header class="header">
-        <h1 class="brand">Music-to-Movie Recommender</h1>
-      </header>
-      {% block content %}{% endblock %}
-    </main>
-    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-  </body>
-</html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MusicMatch 98</title>
+  <!-- 98.css from CDN -->
+  <link rel="stylesheet" href="https://unpkg.com/98.css" />
+  <!-- Custom Win95/98 styles -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}" />
+</head>
+<body style="background: #008080;">
 
+  <!-- Desktop area: child templates render their own .window divs directly here -->
+  <div class="desktop">
+    {% block content %}{% endblock %}
+  </div>
+
+  <!-- Taskbar fixed at bottom -->
+  <div class="taskbar" id="taskbar">
+    <button class="start-btn" id="start-button">
+      Start
+    </button>
+
+    <div class="taskbar-separator"></div>
+
+    <div class="taskbar-app-btn active" id="taskbar-app">
+      🎵 MusicMatch 98
+    </div>
+
+    <div class="taskbar-clock" id="taskbar-clock">00:00</div>
+  </div>
+
+  <!-- JS: live clock + hourglass on form submit -->
+  <script defer src="{{ url_for('static', filename='js/main.js') }}"></script>
+  <script>
+    // Live clock in taskbar
+    function updateClock() {
+      var now = new Date();
+      var h = String(now.getHours()).padStart(2, '0');
+      var m = String(now.getMinutes()).padStart(2, '0');
+      var el = document.getElementById('taskbar-clock');
+      if (el) el.textContent = h + ':' + m;
+    }
+    updateClock();
+    setInterval(updateClock, 10000);
+
+    // Hourglass cursor while any form is submitting
+    document.addEventListener('DOMContentLoaded', function () {
+      document.querySelectorAll('form').forEach(function (form) {
+        form.addEventListener('submit', function () {
+          document.body.style.cursor = 'wait';
+        });
+      });
+    });
+  </script>
+</body>
+</html>

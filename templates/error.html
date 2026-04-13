@@ -1,10 +1,34 @@
 {% extends "base.html" %}
-{% block title %}Error - Music-to-Movie{% endblock %}
 {% block content %}
-  <section class="card error">
-    <h2>Something went wrong</h2>
-    <p>{{ message }}</p>
-    <a class="btn" href="{{ url_for('index') }}">Back</a>
-  </section>
-{% endblock %}
 
+<div class="window" id="win-error" style="max-width:500px; margin:60px auto;">
+  <div class="title-bar">
+    <div class="title-bar-text">⚠ Error — MusicMatch 98</div>
+    <div class="title-bar-controls">
+      <button aria-label="Minimize"></button>
+      <button aria-label="Maximize"></button>
+      <button aria-label="Close"></button>
+    </div>
+  </div>
+
+  <div class="window-body">
+
+    <!-- Error icon + message box, styled like a Win98 dialog -->
+    <div style="display:flex; align-items:flex-start; gap:14px; padding:8px 4px 12px;">
+      <span style="font-size:32px; line-height:1;">⚠️</span>
+      <div>
+        <p style="font-weight:bold; margin:0 0 6px;">Something went wrong</p>
+        <p style="margin:0; font-size:11px;">{{ message }}</p>
+      </div>
+    </div>
+
+    <hr />
+
+    <div style="display:flex; gap:8px; justify-content:flex-end; padding-top:4px;">
+      <a class="btn" href="{{ url_for('index') }}" id="error-back-btn">OK</a>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}
