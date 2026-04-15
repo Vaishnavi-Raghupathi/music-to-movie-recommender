@@ -11,6 +11,15 @@
 </head>
 <body style="background: #008080;">
 
+  <div class="title-bar">
+    <div class="title-bar-text">MusicMatch 98</div>
+    <div class="title-bar-controls">
+      <button aria-label="Minimize"></button>
+      <button aria-label="Maximize"></button>
+      <button aria-label="Close"></button>
+    </div>
+  </div>
+
   <!-- Desktop area: child templates render their own .window divs directly here -->
   <div class="desktop">
     {% block content %}{% endblock %}
@@ -25,7 +34,7 @@
     <div class="taskbar-separator"></div>
 
     <div class="taskbar-app-btn active" id="taskbar-app">
-      🎵 MusicMatch 98
+      MusicMatch 98
     </div>
 
     <div class="taskbar-clock" id="taskbar-clock">00:00</div>

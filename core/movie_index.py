@@ -13,6 +13,14 @@ import pandas as pd
 from .audio_projection import project_to_cinematic
 from .genre_bridge import GENRE_CINEMA_MAP
 
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Set FAISS to use a single thread to avoid potential multiprocessing issues
+faiss.omp_set_num_threads(1)
+
 
 def _words_from_descriptor(descriptor: str) -> set[str]:
     return {w.strip().lower() for w in (descriptor or "").split() if w.strip()}
@@ -213,13 +221,18 @@ def build_movie_index(tmdb_df: pd.DataFrame, model) -> tuple[faiss.Index, np.nda
     index_path = os.path.join(cache_dir, f"tone_{mname}_{key}.index")
     emb_path = os.path.join(cache_dir, f"tone_{mname}_{key}.npy")
 
+    logging.debug(f"Index path: {index_path}")
+    logging.debug(f"Embedding path: {emb_path}")
+
     if os.path.exists(index_path) and os.path.exists(emb_path):
+        logging.debug("Loading existing FAISS index and embeddings.")
         index = faiss.read_index(index_path)
         embeddings = np.load(emb_path)
         return index, embeddings, df
 
+    logging.debug("Building new FAISS index and embeddings.")
     tone_texts = df["tone_text"].fillna("").astype(str).tolist()
-    embeddings = model.encode(tone_texts, batch_size=256, show_progress_bar=False)
+    embeddings = model.encode(tone_texts, batch_size=64, show_progress_bar=True)  # Reduced batch size
     embeddings = np.asarray(embeddings, dtype="float32")
     faiss.normalize_L2(embeddings)
 
@@ -227,6 +240,7 @@ def build_movie_index(tmdb_df: pd.DataFrame, model) -> tuple[faiss.Index, np.nda
     index = faiss.IndexFlatIP(d)
     index.add(embeddings)
 
+    logging.debug("Saving FAISS index and embeddings to disk.")
     faiss.write_index(index, index_path)
     np.save(emb_path, embeddings)
 

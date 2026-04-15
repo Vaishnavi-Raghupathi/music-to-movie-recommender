@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 
 import numpy as np
@@ -23,13 +24,32 @@ from core.spotify_client import (
 )
 
 # ---------------------------------------------------------------------------
+# Logging configuration
+# ---------------------------------------------------------------------------
+
+logging.basicConfig(
+    level=logging.INFO,  # Change to logging.WARNING to reduce verbosity
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
+
+# Suppress debug logs from external libraries
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
+# ---------------------------------------------------------------------------
 # Startup (module-level globals, runs once)
 # ---------------------------------------------------------------------------
 
-sentence_model = SentenceTransformer(config.MODEL_NAME)
+# Ensure the SentenceTransformer model is loaded safely
+if os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
+    sentence_model = SentenceTransformer(config.MODEL_NAME, use_auth_token=os.getenv("HF_TOKEN"))
 
 spotify_df = pd.read_csv(config.DATASET_PATH)
-tmdb_df = pd.read_csv(config.TMDB_PATH)
+try:
+    tmdb_df = pd.read_csv(config.TMDB_PATH)
+except FileNotFoundError:
+    logging.error(f"TMDB file not found: {config.TMDB_PATH}")
+    raise
 
 # Preprocess TMDB: ensure year + build tone_text (tone-based indexing, not plot)
 if "year" not in tmdb_df.columns:
@@ -195,14 +215,30 @@ def recommend():
     sp = get_spotify_client(token_info)
     tracks = get_top_tracks(sp, limit=config.TOP_TRACKS_LIMIT, time_range=config.TIME_RANGE)
 
+    logging.debug(f"Tracks retrieved: {len(tracks)}")
+
     music_features = [_track_to_features(t) for t in tracks]
+
+    logging.debug(f"Music features built: {len(music_features)}")
 
     recommender = MusicToMovieRecommender(filtered_tmdb, faiss_index, movie_embeddings, sentence_model)
 
     individual_recs = []
     for tf in music_features:
         recs = recommender.recommend_for_track(tf, top_k=5)
+        logging.debug(f"Recommendations for track '{tf['track']['name']}': {recs}")
         individual_recs.append({"track": tf["track"], "descriptor": tf["descriptor"], "mood": None, "movies": recs})
+        # More explicit debug: show types, counts and movie titles for easier triage
+        try:
+            titles = [m.get("title") for m in recs] if isinstance(recs, list) else []
+        except Exception:
+            titles = []
+        logging.debug(f"Track features type: {type(tf)}, track key type: {type(tf.get('track'))}")
+        logging.debug(f"Recommendations count for track '{tf.get('track', {}).get('name', '')}': {len(recs) if isinstance(recs, list) else 'N/A'}")
+        logging.debug(f"Recommendation titles: {titles}")
+
+    logging.debug(f"Length of individual_recs before render_template: {len(individual_recs)}")
+    logging.debug(f"Final individual_recs: {len(individual_recs)}")
 
     profile_recs = recommender.recommend_for_profile(music_features, top_k=10)
     vibe = recommender.analyze_vibe(music_features)
@@ -224,6 +260,6 @@ def logout():
 
 
 if __name__ == "__main__":
-    debug = os.getenv("FLASK_DEBUG", "").strip() == "1"
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=debug)
+    import sys
+    port = int(sys.argv[1].split('=')[1]) if len(sys.argv) > 1 and '--port=' in sys.argv[1] else int(os.environ.get("PORT", 5001))
+    app.run(host="0.0.0.0", port=port, debug=False)  # Disabled debug mode to avoid reloader issues

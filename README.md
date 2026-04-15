@@ -60,34 +60,23 @@ python app.py
 
 ### Railway
 
-1. Push the repo to GitHub — **do NOT commit** `.env`, datasets (`dataset.csv`, `TMDB_movie_dataset_v11.csv`), or `faiss_cache/` (all are gitignored).
-2. Go to [Railway](https://railway.app) → **New Project** → **Deploy from GitHub repo**.
-3. Select this repository.
-4. Add the following environment variables in the Railway dashboard:
-   - `SPOTIFY_CLIENT_ID`
-   - `SPOTIFY_CLIENT_SECRET`
-   - `SPOTIFY_REDIRECT_URI` → `https://your-app.railway.app/callback`
-   - `FLASK_SECRET_KEY`
-5. Upload `dataset.csv` and `TMDB_movie_dataset_v11.csv` via a **Railway Volume** mounted at `/app`, or include them directly in the repo if combined size is under 100 MB.
-6. Railway will use `railway.toml` and `Procfile` automatically — no extra configuration needed.
-
-### Render
-
-1. Push the repo to GitHub (same gitignore rules as above).
-2. Go to [Render](https://render.com) → **New Web Service** → connect your repo.
-3. Render will detect `render.yaml` and pre-fill build/start commands.
-4. Set environment variables in the Render dashboard (marked `sync: false` in `render.yaml` so they are never committed to source).
-5. Upload datasets via a Render **Disk** or bundle them in the repo if size allows.
+1. Push repo to GitHub (DO NOT commit .env, datasets, or faiss_cache/)
+2. Connect repo to Railway
+3. Add env vars in Railway dashboard
+4. Upload dataset.csv and TMDB_movie_dataset_v11.csv via Railway volume 
+   or include them in the repo if size allows (<100MB)
 
 ### Spotify App Settings
 
-In the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard), add your production callback URL to **Redirect URIs**:
+Add your production URL to Redirect URIs in Spotify Developer Dashboard:
 
 ```
 https://your-app.railway.app/callback
-# or
-https://your-app.onrender.com/callback
 ```
+
+### Notes
+
+- `faiss_cache/` is gitignored and will be rebuilt on first request per filter combination. First load will be slow (~30s). Subsequent loads use cache.
 
 ---
 

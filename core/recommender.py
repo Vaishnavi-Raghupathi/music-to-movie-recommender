@@ -4,6 +4,7 @@ from collections import Counter
 from dataclasses import dataclass
 import re
 from typing import Any
+import logging
 
 import numpy as np
 import pandas as pd
@@ -81,11 +82,18 @@ class MusicToMovieRecommender:
         cand_scores = distances[0].tolist()
         cand_idxs = indices[0].tolist()
 
+        # Debugging: Log query and FAISS search results
+        logging.debug(f"Query vector (q): {q}")
+        logging.debug(f"FAISS distances: {distances}")
+        logging.debug(f"FAISS indices: {indices}")
+
         # 2. re-rank with hybrid score
         track_cv, _desc = self._extract_track_cinematic(track_features)
         scored = []
         for i, fs in zip(cand_idxs, cand_scores):
-            scored.append((int(i), float(fs), self._hybrid_score(fs, track_cv, i)))
+            hybrid_score = self._hybrid_score(fs, track_cv, i)
+            logging.debug(f"Movie index: {i}, FAISS score: {fs}, Hybrid score: {hybrid_score}")
+            scored.append((int(i), float(fs), hybrid_score))
         scored.sort(key=lambda x: x[2], reverse=True)
 
         # 3. format output
