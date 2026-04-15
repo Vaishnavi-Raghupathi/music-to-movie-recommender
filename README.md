@@ -115,6 +115,24 @@ music-to-movie-recommender/
 
 ---
 
+## New Features
+
+### Ask a Question
+
+- **Description**: Users can now ask questions about the research paper text directly in the app.
+- **How It Works**:
+  1. Enter your question in the "Ask a Question" text input.
+  2. Click the "Get Answer" button.
+  3. The app uses the `ask_question` function to generate a concise, technical answer based on the paper text.
+
+### Improved Debugging and Stability
+
+- **Safe Model Loading**: The SentenceTransformer model is now loaded safely to avoid issues with the Flask reloader.
+- **Default Port**: The app defaults to port 5001 to prevent conflicts with other applications.
+- **Enhanced Debug Logs**: Added detailed debug logs to trace the recommendation pipeline, including `tracks`, `music_features`, and `individual_recs`.
+
+---
+
 ## License
 
 MIT
